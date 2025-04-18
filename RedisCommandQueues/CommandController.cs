@@ -6,16 +6,16 @@ namespace RedisCommandQueues;
 [Route("api/[controller]")]
 public class CommandController : ControllerBase
 {
-    private readonly IOSRedisCommandQueueService _commandService;
+    private readonly RedisCommandQueueService _commandService;
 
-    public CommandController(IOSRedisCommandQueueService commandService)
+    public CommandController(RedisCommandQueueService commandService)
     {
         _commandService = commandService;
     }
 
     // Добавление команды в очередь
     [HttpPost("{clientId}/add")]
-    public async Task<IActionResult> AddCommand(string clientId, [FromBody] string commandData)
+    public async Task<IActionResult> AddCommand(string clientId, [FromBody] CommandEntry commandData)
     {
         await _commandService.AddCommandAsync(clientId, commandData);
         return Ok();
@@ -31,9 +31,9 @@ public class CommandController : ControllerBase
 
     // Подтверждение обработки команды
     [HttpPost("{clientId}/ack")]
-    public async Task<IActionResult> AcknowledgeCommand(string clientId, [FromBody] string commandId)
+    public async Task<IActionResult> AcknowledgeCommand(string clientId, [FromBody] double scoreId)
     {
-        await _commandService.ConfirmProcessingAsync(clientId, commandId, false);
+        await _commandService.ConfirmProcessingAsync(clientId, scoreId, false);
         return Ok();
     }
    

@@ -1,7 +1,9 @@
 namespace RedisCommandQueues;
 
-public class CommandEntry
+public record CommandEntry
 {
-    public string Id { get; set; }
-    public string Data { get; set; }
+    public int Id { get; init; }
+    public int BatchId { get; init; }
+    public double? ScoreId { get; set; }
+    public string Data { get; init; }
 }
