@@ -4,9 +4,12 @@ using StackExchange.Redis;
 namespace RedisCommandQueues;
 
 /// <summary>
-/// Важно учесть идемпотентность методов и, возможно, работу в конкурентной среде 
+/// Очереди команд для устройств на основе Redis.SortedSet
 /// </summary>
-public class RedisCommandQueueService
+/// <remarks>
+/// Важно учесть идемпотентность методов и работу в конкурентной среде
+/// </remarks>
+internal class RedisCommandQueueService : ICommandQueueService
 {
     private readonly IDatabase _database;
 
@@ -19,31 +22,32 @@ public class RedisCommandQueueService
     }
 
     /// <summary>
-    /// Добавление команды в очередь для устройства на стороне MDM 
+    /// Добавление команды в очередь для устройства на стороне MDM
     /// </summary>
     /// <param name="deviceId"></param>
     /// <param name="command"></param>
-    public async Task AddCommandAsync(string deviceId, CommandEntry command)
+    public async Task<bool> AddCommand(string deviceId, CommandItem command)
     {
         var score = await _database.StringIncrementAsync(GetCounterKey(deviceId)).ConfigureAwait(false);
         var serializedCommand = JsonSerializer.Serialize(command);
-        await _database.SortedSetAddAsync(GetSortedSetKey(deviceId), serializedCommand, score, When.NotExists)
+        var result = await _database.SortedSetAddAsync(GetSortedSetKey(deviceId), serializedCommand, score, When.Always)
             .ConfigureAwait(false);
+        return result;
     }
 
     /// <summary>
-    /// Получение команды устройством 
+    /// Получение команды устройством
     /// </summary>
     /// <param name="deviceId"></param>
     /// <returns></returns>
-    public async Task<CommandEntry?> GetCommandAsync(string deviceId)
+    public async Task<CommandItem?> GetCommand(string deviceId)
     {
         var items = await _database.SortedSetRangeByRankWithScoresAsync(
             GetSortedSetKey(deviceId), 0, 0).ConfigureAwait(false);
 
         if (items.Length > 0)
         {
-            var command = JsonSerializer.Deserialize<CommandEntry>(items[0].Element!);
+            var command = JsonSerializer.Deserialize<CommandItem>(items[0].Element!);
             command!.ScoreId = items[0].Score;
             return command;
         }
@@ -57,10 +61,11 @@ public class RedisCommandQueueService
     /// <param name="deviceId"></param>
     /// <param name="scoreId"></param>
     /// <param name="isCancelled"></param>
-    public async Task ConfirmProcessingAsync(string deviceId, double scoreId, bool isCancelled)
+    public async Task<bool> ConfirmCommandProcessing(string deviceId, double scoreId, bool isCancelled)
     {
         var removedCount =
-            await _database.SortedSetRemoveRangeByScoreAsync(GetSortedSetKey(deviceId), scoreId, scoreId);
+            await _database.SortedSetRemoveRangeByScoreAsync(GetSortedSetKey(deviceId), scoreId, scoreId)
+                .ConfigureAwait(false);
         if (removedCount != 1)
         {
             // лог removedCount todo
@@ -70,6 +75,8 @@ public class RedisCommandQueueService
         {
             // лог todo
         }
+
+        return removedCount == 1;
     }
 
     private static string GetCounterKey(string deviceId)
